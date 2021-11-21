@@ -23,4 +23,7 @@ enum ResolutionPreset {
 
   /// The highest resolution available.
   max,
+
+  /// The 1600x1200 aspect ratio 4:3 resolution
+  custom43,
 }

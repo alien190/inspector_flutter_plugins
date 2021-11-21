@@ -9,10 +9,10 @@ dependencies:
     # The example app is bundled with the plugin so we use a path dependency on
     # the parent directory to use the current plugin's version.
     path: ../
-  path_provider: ^0.5.0
+  path_provider: ^2.0.7
   flutter:
     sdk: flutter
-  video_player: ^0.10.0
+  video_player: ^2.2.7
   integration_test:
     path: ../../../integration_test
 
@@ -29,3 +29,6 @@ flutter:
 environment:
   sdk: ">=2.7.0 <3.0.0"
   flutter: ">=1.9.1+hotfix.4"
+
+dependency_overrides:
+  vm_service: ^7.0.0

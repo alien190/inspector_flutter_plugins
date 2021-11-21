@@ -435,6 +435,8 @@ class MethodChannelCamera extends CameraPlatform {
         return 'medium';
       case ResolutionPreset.low:
         return 'low';
+      case ResolutionPreset.custom43:
+        return 'custom43';
       default:
         throw ArgumentError('Unknown ResolutionPreset value');
     }
