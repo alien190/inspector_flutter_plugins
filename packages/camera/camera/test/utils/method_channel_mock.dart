@@ -15,7 +15,7 @@ class MethodChannelMock {
     this.delay,
     required this.methods,
   }) : methodChannel = MethodChannel(channelName) {
-    methodChannel.setMockMethodCallHandler(_handler);
+    //methodChannel.setMockMethodCallHandler(_handler);
   }
 
   Future _handler(MethodCall methodCall) async {
