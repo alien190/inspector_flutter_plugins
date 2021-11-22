@@ -11,7 +11,10 @@ dependencies:
     sdk: flutter
 
   camera_platform_interface:
-    path: ../camera_platform_interface
+    git:
+      url: git@github.com:alien190/plugins.git
+      path: packages/camera/camera_platform_interface
+      ref: 98b074678cb59ab3ca68cdafac0ca74ba760719d
 
   pedantic: ^1.10.0
   quiver: ^3.0.0-nullsafety.3
