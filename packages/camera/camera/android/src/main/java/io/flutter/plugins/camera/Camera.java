@@ -66,6 +66,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -84,6 +85,8 @@ public class Camera {
      * Timeout for the pre-capture sequence.
      */
     private static final long PRECAPTURE_TIMEOUT_MS = 1000;
+    private static final int PREFFERED_43FORMAT_WIDTH = 1600;
+    private static final int PREFFERED_43FORMAT_HEIGHT = 1200;
 
     private final SurfaceTextureEntry flutterTexture;
     private final CameraManager cameraManager;
@@ -202,17 +205,67 @@ public class Camera {
             );
         }
 
-        if (selectedOutputFormats.contains(ImageFormat.JPEG) &&
-                checkFor43Resolution(streamConfigurationMap, ImageFormat.JPEG)) {
+        Size jpegClosestSize = null;
+        try {
+            jpegClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.JPEG);
+        } catch (Exception exception) {
+            Log.i(TAG, "There isn't any closest sizes for JPEG format");
+        }
+
+        Size yuvClosestSize = null;
+        try {
+            yuvClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.YUV_420_888);
+        } catch (Exception exception) {
+            Log.i(TAG, "There isn't any closest sizes for YUV_420_888 format");
+        }
+
+        if (jpegClosestSize != null && yuvClosestSize != null) {
+            if (jpegClosestSize.getWidth() == PREFFERED_43FORMAT_WIDTH
+                    && jpegClosestSize.getHeight() == PREFFERED_43FORMAT_HEIGHT) {
+                return new CameraOutputConfig(
+                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
+                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
+                        ImageFormat.JPEG
+                );
+            }
+
+            if (yuvClosestSize.getWidth() == PREFFERED_43FORMAT_WIDTH
+                    && yuvClosestSize.getHeight() == PREFFERED_43FORMAT_HEIGHT) {
+                return new CameraOutputConfig(
+                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
+                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
+                        ImageFormat.YUV_420_888
+                );
+            }
+
+            if (jpegClosestSize.getWidth() <= yuvClosestSize.getWidth()
+                    && jpegClosestSize.getHeight() <= yuvClosestSize.getHeight()) {
+                final Size size = new Size(jpegClosestSize.getWidth(), jpegClosestSize.getHeight());
+                return new CameraOutputConfig(
+                        size,
+                        size,
+                        ImageFormat.JPEG
+                );
+            }
+
+            final Size size = new Size(yuvClosestSize.getWidth(), yuvClosestSize.getHeight());
             return new CameraOutputConfig(
-                    new Size(1600, 1200),
-                    new Size(1600, 1200),
+                    size,
+                    size,
+                    ImageFormat.YUV_420_888
+            );
+        } else if (jpegClosestSize != null) {
+            final Size size = new Size(jpegClosestSize.getWidth(), jpegClosestSize.getHeight());
+            return new CameraOutputConfig(
+                    size,
+                    size,
                     ImageFormat.JPEG
             );
-        } else if (checkFor43Resolution(streamConfigurationMap, ImageFormat.YUV_420_888)) {
+        } else if (yuvClosestSize != null) {
+            final Size size = new Size(yuvClosestSize.getWidth(), yuvClosestSize.getHeight());
             return new CameraOutputConfig(
-                    new Size(1600, 1200),
-                    new Size(1600, 1200),
+                    size,
+                    size,
                     ImageFormat.YUV_420_888
             );
         }
@@ -224,14 +277,16 @@ public class Camera {
         );
     }
 
-    private boolean checkFor43Resolution(StreamConfigurationMap streamConfigurationMap, int format) {
+    private Size getClosest43Resolution(StreamConfigurationMap streamConfigurationMap, int format)
+            throws IllegalStateException {
         final Size[] sizes = streamConfigurationMap.getOutputSizes(format);
+        Arrays.sort(sizes, (o1, o2) -> o1.getWidth() - o2.getWidth());
         for (Size size : sizes) {
-            if (size.getHeight() == 1200 && size.getWidth() == 1600) {
-                return true;
+            if (size.getWidth() >= 1600 && size.getHeight() >= 1200) {
+                return size;
             }
         }
-        return false;
+        throw new IllegalStateException("No sizes");
     }
 
     private void initFps(CameraCharacteristics cameraCharacteristics) {
