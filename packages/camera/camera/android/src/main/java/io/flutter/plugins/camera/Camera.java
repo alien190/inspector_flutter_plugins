@@ -10,7 +10,10 @@ import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -29,7 +32,6 @@ import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.SessionConfiguration;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
-import android.media.ExifInterface;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
@@ -60,13 +62,13 @@ import io.flutter.plugins.camera.types.FocusMode;
 import io.flutter.plugins.camera.types.ResolutionPreset;
 import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -124,6 +126,8 @@ public class Camera {
     private long preCaptureStartTime;
 
     private static final HashMap<String, Integer> supportedImageFormats;
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     // Current supported outputs
     static {
@@ -208,14 +212,14 @@ public class Camera {
         Size jpegClosestSize = null;
         try {
             jpegClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.JPEG);
-        } catch (Exception exception) {
+        } catch (IllegalStateException exception) {
             Log.i(TAG, "There isn't any closest sizes for JPEG format");
         }
 
         Size yuvClosestSize = null;
         try {
             yuvClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.YUV_420_888);
-        } catch (Exception exception) {
+        } catch (IllegalStateException exception) {
             Log.i(TAG, "There isn't any closest sizes for YUV_420_888 format");
         }
 
@@ -280,9 +284,18 @@ public class Camera {
     private Size getClosest43Resolution(StreamConfigurationMap streamConfigurationMap, int format)
             throws IllegalStateException {
         final Size[] sizes = streamConfigurationMap.getOutputSizes(format);
-        Arrays.sort(sizes, (o1, o2) -> o1.getWidth() - o2.getWidth());
+        Arrays.sort(sizes, (o1, o2) ->
+                {
+                    if (o1.getWidth() - o2.getWidth() == 0) {
+                        return o1.getHeight() - o2.getHeight();
+                    }
+                    return o1.getWidth() - o2.getWidth();
+                }
+        );
         for (Size size : sizes) {
-            if (size.getWidth() >= 1600 && size.getHeight() >= 1200) {
+            final float aspectRatio = ((float) size.getWidth()) / size.getHeight();
+            if (aspectRatio >= 1.3 && aspectRatio <= 1.4 &&
+                    size.getWidth() >= 1600 && size.getHeight() >= 1200) {
                 return size;
             }
         }
@@ -521,33 +534,38 @@ public class Camera {
         }
     }
 
-    private void writeToFile(byte[] imageBytes, File file) throws Exception {
-        try (FileOutputStream outputStream = new FileOutputStream(file)) {
-            outputStream.write(imageBytes);
-        }
+    private void writeToFile(Image image, File file, WriteImageToFileCallback result) {
+        new Thread(() -> {
+            try {
+                final byte[] imageBytes = ImageUtils.imageToByteArray(image);
+                final Bitmap srcBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
 
-        if (cameraOutputConfig.getFormat() != ImageFormat.JPEG) {
-            final ExifInterface exifInterface = new ExifInterface(file.getAbsolutePath());
+                final float scaleFactor = ((float) PREFFERED_43FORMAT_WIDTH / srcBitmap.getWidth());
+                final Matrix dstMatrix = new Matrix();
+                dstMatrix.postScale(scaleFactor, scaleFactor);
+                dstMatrix.postRotate(deviceOrientationListener.getMediaOrientation());
 
-            exifInterface.setAttribute(ExifInterface.TAG_ORIENTATION,
-                    String.valueOf(getExifOrientation()));
-            exifInterface.saveAttributes();
-        }
-    }
+                final Bitmap dstBitmap = Bitmap.createBitmap(
+                        srcBitmap,
+                        0,
+                        0,
+                        srcBitmap.getWidth(),
+                        srcBitmap.getHeight(),
+                        dstMatrix,
+                        true
+                );
 
-    private int getExifOrientation() {
-        switch (deviceOrientationListener.getMediaOrientation()) {
-            case 0:
-                return 1;
-            case 90:
-                return 6;
-            case 180:
-                return 3;
-            case 270:
-                return 8;
-            default:
-                return 0;
-        }
+                try (FileOutputStream outputStream = new FileOutputStream(file)) {
+                    dstBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
+                }
+                mainHandler.post(() -> result.onResult(null));
+                srcBitmap.recycle();
+                dstBitmap.recycle();
+            } catch (Exception exception) {
+                mainHandler.post(() -> result.onResult(exception));
+            }
+        }).start();
+
     }
 
     public void takePicture(@NonNull final Result result) {
@@ -572,15 +590,22 @@ public class Camera {
         // Listen for picture being taken
         pictureImageReader.setOnImageAvailableListener(
                 reader -> {
-                    try (Image image = reader.acquireLatestImage()) {
-                        final byte[] imageBytes = ImageUtils.imageToByteArray(image);
-                        writeToFile(imageBytes, file);
-                        pictureCaptureRequest.finish(file.getAbsolutePath());
-                    } catch (IOException e) {
-                        pictureCaptureRequest.error("IOError", "Failed saving image", null);
-                    } catch (Exception e) {
-                        pictureCaptureRequest.error("Unknown error", "Failed saving image", null);
-                    }
+                    Image image = reader.acquireLatestImage();
+                    writeToFile(image, file, exception -> {
+                        try {
+                            if (exception == null) {
+                                pictureCaptureRequest.finish(file.getAbsolutePath());
+                            } else {
+                                pictureCaptureRequest.error(
+                                        "Image save error",
+                                        "Failed saving image" + exception.toString(),
+                                        null
+                                );
+                            }
+                        } catch (Exception requestException) {
+                            Log.e(TAG, "pictureCaptureRequest exception:" + requestException.toString());
+                        }
+                    });
                 },
                 null);
 
@@ -724,9 +749,9 @@ public class Camera {
         if (captureRequestBuilder == null) {
             return;
         }
-        captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, lockedCaptureOrientation == null
-                ? deviceOrientationListener.getMediaOrientation()
-                : deviceOrientationListener.getMediaOrientation(lockedCaptureOrientation));
+//        captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, lockedCaptureOrientation == null
+//                ? deviceOrientationListener.getMediaOrientation()
+//                : deviceOrientationListener.getMediaOrientation(lockedCaptureOrientation));
         switch (flashMode) {
             case auto:
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, getAvailableAeModes().contains(CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH) ? CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH : CaptureRequest.CONTROL_AE_MODE_ON);
@@ -817,11 +842,11 @@ public class Camera {
             captureBuilder.set(
                     CaptureRequest.SCALER_CROP_REGION,
                     captureRequestBuilder.get(CaptureRequest.SCALER_CROP_REGION));
-            captureBuilder.set(
-                    CaptureRequest.JPEG_ORIENTATION,
-                    lockedCaptureOrientation == null
-                            ? deviceOrientationListener.getMediaOrientation()
-                            : deviceOrientationListener.getMediaOrientation(lockedCaptureOrientation));
+//            captureBuilder.set(
+//                    CaptureRequest.JPEG_ORIENTATION,
+//                    lockedCaptureOrientation == null
+//                            ? deviceOrientationListener.getMediaOrientation()
+//                            : deviceOrientationListener.getMediaOrientation(lockedCaptureOrientation));
 
             cameraCaptureSession.stopRepeating();
             cameraCaptureSession.capture(captureBuilder.build(), mCaptureCallback, null);
@@ -1445,4 +1470,8 @@ public class Camera {
         flutterTexture.release();
         deviceOrientationListener.stop();
     }
+}
+
+interface WriteImageToFileCallback {
+    void onResult(Exception exception);
 }

@@ -85,13 +85,13 @@ class DeviceOrientationManager {
         new OrientationEventListener(activity, SensorManager.SENSOR_DELAY_NORMAL) {
           @Override
           public void onOrientationChanged(int angle) {
-            if (!isSystemAutoRotationLocked()) {
+            //if (!isSystemAutoRotationLocked()) {
               PlatformChannel.DeviceOrientation newOrientation = calculateSensorOrientation(angle);
               if (!newOrientation.equals(lastOrientation)) {
                 lastOrientation = newOrientation;
                 messenger.sendDeviceOrientationChangeEvent(newOrientation);
               }
-            }
+            //}
           }
         };
     if (orientationEventListener.canDetectOrientation()) {
