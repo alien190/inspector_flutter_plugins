@@ -213,64 +213,6 @@ public class Camera {
         Size jpegClosestSize = null;
         try {
             jpegClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.JPEG);
-        } catch (Exception exception) {
-            Log.i(TAG, "There isn't any closest sizes for JPEG format");
-        }
-
-        Size yuvClosestSize = null;
-        try {
-            yuvClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.YUV_420_888);
-        } catch (Exception exception) {
-            Log.i(TAG, "There isn't any closest sizes for YUV_420_888 format");
-        }
-
-        if (jpegClosestSize != null && yuvClosestSize != null) {
-            if (jpegClosestSize.getWidth() == PREFFERED_43FORMAT_WIDTH
-                    && jpegClosestSize.getHeight() == PREFFERED_43FORMAT_HEIGHT) {
-                return new CameraOutputConfig(
-                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
-                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
-                        ImageFormat.JPEG
-                );
-            }
-
-            if (yuvClosestSize.getWidth() == PREFFERED_43FORMAT_WIDTH
-                    && yuvClosestSize.getHeight() == PREFFERED_43FORMAT_HEIGHT) {
-                return new CameraOutputConfig(
-                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
-                        new Size(PREFFERED_43FORMAT_WIDTH, PREFFERED_43FORMAT_HEIGHT),
-                        ImageFormat.YUV_420_888
-                );
-            }
-
-            if (jpegClosestSize.getWidth() <= yuvClosestSize.getWidth()
-                    && jpegClosestSize.getHeight() <= yuvClosestSize.getHeight()) {
-                final Size size = new Size(jpegClosestSize.getWidth(), jpegClosestSize.getHeight());
-                return new CameraOutputConfig(
-                        size,
-                        size,
-                        ImageFormat.JPEG
-                );
-            }
-
-            final Size size = new Size(yuvClosestSize.getWidth(), yuvClosestSize.getHeight());
-            return new CameraOutputConfig(
-                    size,
-                    size,
-                    ImageFormat.YUV_420_888
-            );
-        } else if (jpegClosestSize != null) {
-            final Size size = new Size(jpegClosestSize.getWidth(), jpegClosestSize.getHeight());
-            return new CameraOutputConfig(
-                    size,
-                    size,
-                    ImageFormat.JPEG
-            );
-        } else if (yuvClosestSize != null) {
-            final Size size = new Size(yuvClosestSize.getWidth(), yuvClosestSize.getHeight());
-        Size jpegClosestSize = null;
-        try {
-            jpegClosestSize = getClosest43Resolution(streamConfigurationMap, ImageFormat.JPEG);
         } catch (IllegalStateException exception) {
             Log.i(TAG, "There isn't any closest sizes for JPEG format");
         }
@@ -343,18 +285,16 @@ public class Camera {
     private Size getClosest43Resolution(StreamConfigurationMap streamConfigurationMap, int format)
             throws IllegalStateException {
         final Size[] sizes = streamConfigurationMap.getOutputSizes(format);
-        Arrays.sort(sizes, (o1, o2) -> o1.getWidth() - o2.getWidth());
         Arrays.sort(sizes, (o1, o2) ->
                 {
-                    if (o1.getWidth() - o2.getWidth() == 0) {
+                    final int widthDiff = o1.getWidth() - o2.getWidth();
+                    if (widthDiff == 0) {
                         return o1.getHeight() - o2.getHeight();
                     }
-                    return o1.getWidth() - o2.getWidth();
+                    return widthDiff;
                 }
         );
         for (Size size : sizes) {
-            if (size.getWidth() >= 1600 && size.getHeight() >= 1200) {
-                return size;
             final float aspectRatio = ((float) size.getWidth()) / size.getHeight();
             if (aspectRatio >= 1.3 && aspectRatio <= 1.4 &&
                     size.getWidth() >= 1600 && size.getHeight() >= 1200) {
@@ -596,7 +536,7 @@ public class Camera {
         }
     }
 
-    private void writeToFile(Image image, File file, WriteImageToFileCallback result) {
+    private void writeToFile(Image image, File file, WriteImageToFileCallback resultCallback) {
         new Thread(() -> {
             try {
                 final byte[] imageBytes = ImageUtils.imageToByteArray(image);
@@ -620,11 +560,11 @@ public class Camera {
                 try (FileOutputStream outputStream = new FileOutputStream(file)) {
                     dstBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
                 }
-                mainHandler.post(() -> result.onResult(null));
+                mainHandler.post(() -> resultCallback.onResult(null));
                 srcBitmap.recycle();
                 dstBitmap.recycle();
             } catch (Exception exception) {
-                mainHandler.post(() -> result.onResult(exception));
+                mainHandler.post(() -> resultCallback.onResult(exception));
             }
         }).start();
 
