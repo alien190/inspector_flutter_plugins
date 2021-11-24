@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,21 +7,19 @@ package io.flutter.plugins.camera;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
-import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.CamcorderProfile;
-import android.util.Size;
+import android.media.Image;
 
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
-import io.flutter.plugins.camera.types.ResolutionPreset;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,23 +32,24 @@ public final class CameraUtils {
     private CameraUtils() {
     }
 
-    static PlatformChannel.DeviceOrientation getDeviceOrientationFromDegrees(int degrees) {
-        // Round to the nearest 90 degrees.
-        degrees = (int) (Math.round(degrees / 90.0) * 90) % 360;
-        // Determine the corresponding device orientation.
-        switch (degrees) {
-            case 90:
-                return PlatformChannel.DeviceOrientation.LANDSCAPE_LEFT;
-            case 180:
-                return PlatformChannel.DeviceOrientation.PORTRAIT_DOWN;
-            case 270:
-                return PlatformChannel.DeviceOrientation.LANDSCAPE_RIGHT;
-            case 0:
-            default:
-                return PlatformChannel.DeviceOrientation.PORTRAIT_UP;
-        }
+    /**
+     * Gets the {@link CameraManager} singleton.
+     *
+     * @param context The context to get the {@link CameraManager} singleton from.
+     * @return The {@link CameraManager} singleton.
+     */
+    static CameraManager getCameraManager(Context context) {
+        return (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
     }
 
+    /**
+     * Serializes the {@link PlatformChannel.DeviceOrientation} to a string value.
+     *
+     * @param orientation The orientation to serialize.
+     * @return The serialized orientation.
+     * @throws UnsupportedOperationException when the provided orientation not have a corresponding
+     *                                       string value.
+     */
     static String serializeDeviceOrientation(PlatformChannel.DeviceOrientation orientation) {
         if (orientation == null)
             throw new UnsupportedOperationException("Could not serialize null device orientation.");
@@ -69,6 +68,15 @@ public final class CameraUtils {
         }
     }
 
+    /**
+     * Deserializes a string value to its corresponding {@link PlatformChannel.DeviceOrientation}
+     * value.
+     *
+     * @param orientation The string value to deserialize.
+     * @return The deserialized orientation.
+     * @throws UnsupportedOperationException when the provided string value does not have a
+     *                                       corresponding {@link PlatformChannel.DeviceOrientation}.
+     */
     static PlatformChannel.DeviceOrientation deserializeDeviceOrientation(String orientation) {
         if (orientation == null)
             throw new UnsupportedOperationException("Could not deserialize null device orientation.");
@@ -87,29 +95,29 @@ public final class CameraUtils {
         }
     }
 
-    static Size computeBestPreviewSize(String cameraName, ResolutionPreset preset) {
-        if (preset.ordinal() > ResolutionPreset.high.ordinal()) {
-            preset = ResolutionPreset.high;
-        }
-
-        CamcorderProfile profile =
-                getBestAvailableCamcorderProfileForResolutionPreset(cameraName, preset);
-        return new Size(profile.videoFrameWidth, profile.videoFrameHeight);
-    }
-
-    static Size computeBestCaptureSize(StreamConfigurationMap streamConfigurationMap) {
-        // For still image captures, we use the largest available size.
-        return Collections.max(
-                Arrays.asList(streamConfigurationMap.getOutputSizes(ImageFormat.JPEG)),
-                new CompareSizesByArea());
-    }
-
+    /**
+     * Gets all the available cameras for the device.
+     *
+     * @param activity The current Android activity.
+     * @return A map of all the available cameras, with their name as their key.
+     * @throws CameraAccessException when the camera could not be accessed.
+     */
     public static List<Map<String, Object>> getAvailableCameras(Activity activity)
             throws CameraAccessException {
         CameraManager cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
         String[] cameraNames = cameraManager.getCameraIdList();
         List<Map<String, Object>> cameras = new ArrayList<>();
         for (String cameraName : cameraNames) {
+            int cameraId;
+            try {
+                cameraId = Integer.parseInt(cameraName, 10);
+            } catch (NumberFormatException e) {
+                cameraId = -1;
+            }
+            if (cameraId < 0) {
+                continue;
+            }
+
             HashMap<String, Object> details = new HashMap<>();
             CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraName);
             details.put("name", cameraName);
@@ -133,55 +141,42 @@ public final class CameraUtils {
         return cameras;
     }
 
-    static CamcorderProfile getBestAvailableCamcorderProfileForResolutionPreset(
-            String cameraName, ResolutionPreset preset) {
-        int cameraId = Integer.parseInt(cameraName);
-        switch (preset) {
-            // All of these cases deliberately fall through to get the best available profile.
-            case max:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_HIGH)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_HIGH);
-                }
-            case ultraHigh:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_2160P)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_2160P);
-                }
-            case custom43:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_1080P)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_1080P);
-                }
-            case veryHigh:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_1080P)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_1080P);
-                }
-            case high:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_720P)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_720P);
-                }
-            case medium:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_480P)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_480P);
-                }
-            case low:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_QVGA)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_QVGA);
-                }
-            default:
-                if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_LOW)) {
-                    return CamcorderProfile.get(cameraId, CamcorderProfile.QUALITY_LOW);
-                } else {
-                    throw new IllegalArgumentException(
-                            "No capture session available for current capture session.");
-                }
+    public static byte[] imageToByteArray(Image image) {
+        byte[] data = null;
+        if (image.getFormat() == ImageFormat.JPEG) {
+            Image.Plane[] planes = image.getPlanes();
+            ByteBuffer buffer = planes[0].getBuffer();
+            data = new byte[buffer.capacity()];
+            buffer.get(data);
+            return data;
+        } else if (image.getFormat() == ImageFormat.YUV_420_888) {
+            data = NV21toJPEG(
+                    YUV_420_888toNV21(image),
+                    image.getWidth(), image.getHeight());
         }
+        return data;
     }
 
-    private static class CompareSizesByArea implements Comparator<Size> {
-        @Override
-        public int compare(Size lhs, Size rhs) {
-            // We cast here to ensure the multiplications won't overflow.
-            return Long.signum(
-                    (long) lhs.getWidth() * lhs.getHeight() - (long) rhs.getWidth() * rhs.getHeight());
-        }
+    private static byte[] YUV_420_888toNV21(Image image) {
+        byte[] nv21;
+        ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
+        ByteBuffer vuBuffer = image.getPlanes()[2].getBuffer();
+
+        int ySize = yBuffer.remaining();
+        int vuSize = vuBuffer.remaining();
+
+        nv21 = new byte[ySize + vuSize];
+
+        yBuffer.get(nv21, 0, ySize);
+        vuBuffer.get(nv21, ySize, vuSize);
+
+        return nv21;
+    }
+
+    private static byte[] NV21toJPEG(byte[] nv21, int width, int height) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        YuvImage yuv = new YuvImage(nv21, ImageFormat.NV21, width, height, null);
+        yuv.compressToJpeg(new Rect(0, 0, width, height), 100, out);
+        return out.toByteArray();
     }
 }

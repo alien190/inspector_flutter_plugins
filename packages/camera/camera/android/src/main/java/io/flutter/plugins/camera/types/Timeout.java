@@ -18,34 +18,34 @@ import android.os.SystemClock;
  */
 public class Timeout {
 
-    /** The timeout time in milliseconds */
-    private final long timeoutMs;
+  /** The timeout time in milliseconds */
+  private final long timeoutMs;
 
-    /** When this timeout was started. Will be used later to check if the timeout has expired yet. */
-    private final long timeStarted;
+  /** When this timeout was started. Will be used later to check if the timeout has expired yet. */
+  private final long timeStarted;
 
-    /**
-     * Factory method to create a new Timeout.
-     *
-     * @param timeoutMs timeout to use.
-     * @return returns a new Timeout.
-     */
-    public static Timeout create(long timeoutMs) {
-        return new Timeout(timeoutMs);
-    }
+  /**
+   * Factory method to create a new Timeout.
+   *
+   * @param timeoutMs timeout to use.
+   * @return returns a new Timeout.
+   */
+  public static Timeout create(long timeoutMs) {
+    return new Timeout(timeoutMs);
+  }
 
-    /**
-     * Create a new timeout.
-     *
-     * @param timeoutMs the time in milliseconds for this timeout to lapse.
-     */
-    private Timeout(long timeoutMs) {
-        this.timeoutMs = timeoutMs;
-        this.timeStarted = SystemClock.elapsedRealtime();
-    }
+  /**
+   * Create a new timeout.
+   *
+   * @param timeoutMs the time in milliseconds for this timeout to lapse.
+   */
+  private Timeout(long timeoutMs) {
+    this.timeoutMs = timeoutMs;
+    this.timeStarted = SystemClock.elapsedRealtime();
+  }
 
-    /** Will return true when the timeout period has lapsed. */
-    public boolean getIsExpired() {
-        return (SystemClock.elapsedRealtime() - timeStarted) > timeoutMs;
-    }
+  /** Will return true when the timeout period has lapsed. */
+  public boolean getIsExpired() {
+    return (SystemClock.elapsedRealtime() - timeStarted) > timeoutMs;
+  }
 }
