@@ -592,22 +592,30 @@ public class Camera {
         // Listen for picture being taken
         pictureImageReader.setOnImageAvailableListener(
                 reader -> {
-                    Image image = reader.acquireLatestImage();
-                    writeToFile(image, file, exception -> {
-                        try {
-                            if (exception == null) {
-                                pictureCaptureRequest.finish(file.getAbsolutePath());
-                            } else {
-                                pictureCaptureRequest.error(
-                                        "Image save error",
-                                        "Failed saving image" + exception.toString(),
-                                        null
-                                );
+                    try {
+                        Image image = reader.acquireLatestImage();
+                        writeToFile(image, file, exception -> {
+                            try {
+                                if (exception == null) {
+                                    pictureCaptureRequest.finish(file.getAbsolutePath());
+                                } else {
+                                    pictureCaptureRequest.error(
+                                            "Image save error",
+                                            "Failed saving image" + exception.toString(),
+                                            null
+                                    );
+                                }
+                            } catch (Exception requestException) {
+                                Log.e(TAG, "pictureCaptureRequest exception:" + requestException.toString());
                             }
-                        } catch (Exception requestException) {
-                            Log.e(TAG, "pictureCaptureRequest exception:" + requestException.toString());
-                        }
-                    });
+                        });
+                    } catch (Exception exception) {
+                        pictureCaptureRequest.error(
+                                "ImageAvailableListener error",
+                                exception.toString(),
+                                null
+                        );
+                    }
                 },
                 null);
 
@@ -687,6 +695,9 @@ public class Camera {
 
                     Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
                     Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
+
+                    Log.i(TAG, "processCapture aeState:" + aeState.toString() + ", afState:" + afState.toString());
+
                     if (pictureCaptureRequest.getState() != State.finished) {
 //            Log.i("flutter", "state: " + pictureCaptureRequest.getState() + " | afState: " + afState + " | aeState: " + aeState);
                     }
@@ -851,6 +862,7 @@ public class Camera {
 //                            : deviceOrientationListener.getMediaOrientation(lockedCaptureOrientation));
 
             cameraCaptureSession.stopRepeating();
+            
             cameraCaptureSession.capture(captureBuilder.build(), mCaptureCallback, null);
         } catch (CameraAccessException e) {
             pictureCaptureRequest.error("cameraAccess", e.getMessage(), null);
