@@ -50,3 +50,43 @@ class DeviceOrientationChangedEvent extends DeviceEvent {
   @override
   int get hashCode => orientation.hashCode;
 }
+
+/// The [DeviceTiltsChangedEvent] is fired every time the user changes the
+/// horizontal or vertical tilts of the device.
+class DeviceTiltsChangedEvent extends DeviceEvent {
+  /// The new horizontal tilt of the device
+  final int horizontalTilt;
+
+  /// The new vertical tilt of the device
+  final int verticalTilt;
+
+  /// Build a new tilts changed event.
+  DeviceTiltsChangedEvent({
+    required this.horizontalTilt,
+    required this.verticalTilt,
+  });
+
+  /// Converts the supplied [Map] to an instance of the [DeviceTiltsChangedEvent]
+  /// class.
+  DeviceTiltsChangedEvent.fromJson(Map<String, dynamic> json)
+      : verticalTilt = json['verticalTilt'],
+        horizontalTilt = json['horizontalTilt'];
+
+  /// Converts the [DeviceOrientationChangedEvent] instance into a [Map] instance that
+  /// can be serialized to JSON.
+  Map<String, dynamic> toJson() => {
+        'verticalTilt': verticalTilt,
+        'horizontalTilt': horizontalTilt,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeviceTiltsChangedEvent &&
+          runtimeType == other.runtimeType &&
+          horizontalTilt == other.horizontalTilt &&
+          verticalTilt == other.verticalTilt;
+
+  @override
+  int get hashCode => horizontalTilt.hashCode ^ verticalTilt.hashCode;
+}

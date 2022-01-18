@@ -174,6 +174,11 @@ class MethodChannelCamera extends CameraPlatform {
         .whereType<DeviceOrientationChangedEvent>();
   }
 
+  Stream<DeviceTiltsChangedEvent> onDeviceTiltsChanged() {
+    return deviceEventStreamController.stream
+        .whereType<DeviceTiltsChangedEvent>();
+  }
+
   @override
   Future<void> lockCaptureOrientation(
     int cameraId,
@@ -451,6 +456,10 @@ class MethodChannelCamera extends CameraPlatform {
       case 'orientation_changed':
         deviceEventStreamController.add(DeviceOrientationChangedEvent(
             deserializeDeviceOrientation(call.arguments['orientation'])));
+        break;
+      case 'tilts_changed':
+        deviceEventStreamController.add(
+            DeviceTiltsChangedEvent.fromJson(call.arguments['orientation']));
         break;
       default:
         throw MissingPluginException();

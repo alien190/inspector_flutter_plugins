@@ -2,13 +2,18 @@ name: camera_example
 description: Demonstrates how to use the camera plugin.
 
 dependencies:
-  camera:
+  #camera:
     # When depending on this package from a real application you should use:
     #   camera: ^x.y.z
     # See https://dart.dev/tools/pub/dependencies#version-constraints
     # The example app is bundled with the plugin so we use a path dependency on
     # the parent directory to use the current plugin's version.
-    path: ../
+   # path: ../
+  camera:
+    git:
+      url: git@github.com:alien190/inspector_flutter_plugins
+      path: packages/camera/camera
+      ref: ab87e5e91f031ceed00e5cc1992cc8509d753a74
   path_provider: ^2.0.7
   flutter:
     sdk: flutter
